@@ -318,6 +318,43 @@ footer.note h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0
   .stat-strip { gap: 18px; }
   .hist-pred { display: none; }
 }
+
+.combinadas-disclaimer {
+  max-width: 900px; margin: 18px auto 0; padding: 10px 16px; font-size: 12px; line-height: 1.5;
+  color: var(--text-dim); background: var(--paper-2); border: 1px solid var(--card-border);
+  border-radius: 8px;
+}
+.combo-day { max-width: 900px; margin: 0 auto; padding: 0 16px; }
+.combo-date-h {
+  font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim);
+  font-weight: 700; margin: 26px 0 10px;
+}
+.combo-date-h:first-child { margin-top: 20px; }
+.combo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 700px) { .combo-grid { grid-template-columns: 1fr; } }
+.combo-card {
+  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px;
+  box-shadow: var(--shadow); padding: 14px 16px;
+}
+.combo-card.sonadora { grid-column: 1 / -1; border-color: var(--amber); }
+.combo-card-top {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+  padding-bottom: 8px; border-bottom: 1px dashed var(--card-border);
+}
+.combo-card-title { font-size: 13.5px; font-weight: 800; }
+.combo-prob-badge {
+  font-size: 13px; font-weight: 800; padding: 3px 10px; border-radius: 20px;
+  background: var(--win-soft); color: var(--win); font-variant-numeric: tabular-nums;
+}
+.combo-prob-badge.mid { background: var(--amber-soft); color: #7a5518; }
+:root[data-theme="dark"] .combo-prob-badge.mid, :root[data-theme="dark"] .combo-leg-reason { color: #f0d9a8; }
+.combo-leg { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: 12.5px; }
+.combo-leg + .combo-leg { border-top: 1px solid var(--card-border); }
+.combo-leg-teams { color: var(--text); }
+.combo-leg-teams b { font-weight: 700; }
+.combo-leg-prob { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.combo-leg-reason { font-size: 11px; color: #7a5518; margin-top: 2px; }
+.combo-empty { font-size: 12.5px; color: var(--text-dim); padding: 8px 0 20px; }
 </style>
 
 <header class="top">
@@ -328,6 +365,7 @@ footer.note h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0
     <div class="stat-strip" id="statStrip"></div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="upcoming">Próximos partidos</button>
+      <button class="tab-btn" data-tab="combinadas">Combinadas</button>
       <button class="tab-btn" data-tab="history">Historial y precisión</button>
     </div>
   </div>
@@ -369,6 +407,11 @@ footer.note h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0
       <p><b>Nota sobre bullpen (modelo v3):</b> además del abridor, ahora se compara el ERA agregado del bullpen de cada equipo (todos los relevistas activos, ponderado por innings lanzados) — un ajuste leve (hasta ±5 puntos porcentuales) que suma cuando un equipo tiene una relevo claramente mejor o peor que su rival.</p>
       <p><b>Nota sobre alineación real y historial bateador-pitcher (modelo v3):</b> el día del partido, cuando la MLB ya publicó la alineación titular confirmada, el modelo compara el OPS real de esos 9 bateadores contra el OPS promedio de temporada del equipo (para detectar bajas o suplentes en el lineup) y el historial de cada bateador titular contra el abridor rival — este último solo se usa cuando hay una muestra combinada de al menos 20 turnos al bate del lineup contra ese pitcher, y el peso se reduce automáticamente cuanto menor es la muestra (regresión a la media), para no dejar que 2 o 3 turnos sueltos distorsionen el pronóstico. Para partidos de días futuros, donde todavía no hay alineación confirmada, este ajuste no se aplica.</p>
     </footer>
+  </div>
+
+  <div id="panel-combinadas" class="tab-panel">
+    <div class="combinadas-disclaimer">⚠ Estos porcentajes son la probabilidad combinada estimada por el modelo (multiplicando la probabilidad individual de cada pata, asumiendo partidos independientes) — no una garantía de resultado. Cuantas más patas tiene una combinada, más baja es la probabilidad real de acertarla completa, incluso si cada pata individual es sólida. Es una guía estadística, no una promesa.</div>
+    <div id="combinadasList"></div>
   </div>
 
   <div id="panel-history" class="tab-panel">
@@ -585,6 +628,182 @@ function render() {
 document.getElementById('search').addEventListener('input', render);
 
 render();
+
+// ---- Combinadas ----
+function pct(p) { return Math.round(p * 1000) / 10; }
+
+function legScore(g) {
+  const isHome = g.homeWinProb >= g.awayWinProb;
+  return {
+    g, isHome,
+    pick: isHome ? g.home : g.away,
+    opponent: isHome ? g.away : g.home,
+    prob: (isHome ? g.homeWinProb : g.awayWinProb) / 100,
+  };
+}
+
+function storyReasons(s) {
+  const g = s.g;
+  const oppDisaster = s.isHome ? g.awayPitcherDisasterRate : g.homePitcherDisasterRate;
+  const ownPyth = s.isHome ? g.homePyth : g.awayPyth;
+  const ownPythRecent = s.isHome ? g.homePythRecent : g.awayPythRecent;
+  const bpAway = g.awayBullpenERA, bpHome = g.homeBullpenERA;
+  const bullpenEdge = (bpAway != null && bpHome != null)
+    ? (s.isHome ? bpAway - bpHome : bpHome - bpAway) : null;
+  const ownOPS = parseFloat(s.isHome ? g.homeOPS : g.awayOPS);
+  const oppERA = parseFloat(s.isHome ? g.awayERA : g.homeERA);
+
+  let score = 0;
+  const reasons = [];
+  if (oppDisaster != null && oppDisaster >= 0.25) {
+    score += oppDisaster * 2.2;
+    reasons.push(`el abridor de ${s.opponent} tuvo una salida mala (5+ carreras) en ${Math.round(oppDisaster*100)}% de sus aperturas esta temporada`);
+  }
+  if (ownPythRecent != null && ownPyth != null && (ownPythRecent - ownPyth) >= 6) {
+    score += (ownPythRecent - ownPyth) * 0.06;
+    reasons.push(`${s.pick} viene en racha: ${ownPythRecent}% de forma en los últimos 15 juegos vs. ${ownPyth}% de temporada`);
+  }
+  if (bullpenEdge != null && bullpenEdge >= 0.35) {
+    score += bullpenEdge * 0.35;
+    reasons.push(`bullpen de ${s.opponent} más débil (diferencia de ${bullpenEdge.toFixed(2)} en ERA de relevo)`);
+  }
+  if (!isNaN(ownOPS) && !isNaN(oppERA) && ownOPS >= 0.740 && oppERA >= 4.40) {
+    score += 0.3;
+    reasons.push(`${s.pick} tiene buena ofensiva (OPS ${ownOPS.toFixed(3)}) frente a un abridor rival con ERA alto (${oppERA.toFixed(2)})`);
+  }
+  if (g.pitcherUnderdogDisagreement) {
+    score += 0.25;
+    reasons.push('el modelo detectó un desacuerdo entre la ventaja de equipo y el pitcheo probable en este partido');
+  }
+  if (g.upsetWatch) {
+    score += 0.1;
+  }
+  return { score, reasons };
+}
+
+function comboProb(legs) {
+  return legs.reduce((acc, l) => acc * l.prob, 1);
+}
+
+function comboLegHtml(l) {
+  return `
+    <div class="combo-leg">
+      <div class="combo-leg-teams"><b>${l.pick}</b> vs. ${l.opponent}</div>
+      <div class="combo-leg-prob">${pct(l.prob)}%</div>
+    </div>`;
+}
+
+function comboCardHtml(title, legs, extraClass) {
+  if (!legs.length) return '';
+  const p = comboProb(legs);
+  const badgeClass = p >= 0.45 ? '' : (p >= 0.28 ? 'mid' : 'mid');
+  return `
+    <div class="combo-card ${extraClass || ''}">
+      <div class="combo-card-top">
+        <div class="combo-card-title">${title}</div>
+        <div class="combo-prob-badge ${badgeClass}">${pct(p)}% combinada</div>
+      </div>
+      ${legs.map(comboLegHtml).join('')}
+    </div>`;
+}
+
+function sameLegSet(a, b) {
+  const as = new Set(a.map(l => l.g.gamePk));
+  const bs = new Set(b.map(l => l.g.gamePk));
+  if (as.size !== bs.size) return false;
+  for (const x of as) if (!bs.has(x)) return false;
+  return true;
+}
+
+function buildDayCombinadas(dayGames) {
+  const scored = dayGames.map(legScore).sort((a, b) => b.prob - a.prob);
+  const n = scored.length;
+  const out = { dupletas: [], tripletas: [], sonadora: [] };
+
+  // Dupletas: dos combinadas de 2 patas. Pueden compartir la pata más clara si es muy fuerte.
+  if (n >= 2) {
+    const dupA = [scored[0], scored[1]];
+    let dupB;
+    if (n >= 4) {
+      dupB = scored[0].prob >= 0.62 ? [scored[0], scored[2]] : [scored[2], scored[3]];
+    } else if (n === 3) {
+      dupB = [scored[0], scored[2]];
+    } else {
+      dupB = null;
+    }
+    out.dupletas.push(dupA);
+    if (dupB && !sameLegSet(dupA, dupB)) out.dupletas.push(dupB);
+  }
+
+  // Tripletas: dos combinadas de 3 patas, con variedad real (no solo dupleta + 1).
+  if (n >= 3) {
+    const tripA = [scored[0], scored[1], scored[2]];
+    let tripB = null;
+    if (n >= 6) {
+      tripB = [scored[0], scored[3], scored[4]];
+    } else if (n >= 5) {
+      tripB = [scored[1], scored[2], scored[4]];
+    } else if (n >= 4) {
+      tripB = [scored[0], scored[1], scored[3]];
+    }
+    out.tripletas.push(tripA);
+    if (tripB && !sameLegSet(tripA, tripB)) out.tripletas.push(tripB);
+  }
+
+  // Soñadora: 3-4 patas con historia detrás (mala racha/pitcheo rival, forma reciente, bullpen, ofensiva vs ERA alto).
+  const withStory = scored.map(s => ({ ...s, ...storyReasons(s) })).filter(s => s.score > 0 && s.reasons.length);
+  withStory.sort((a, b) => b.score - a.score);
+  const count = withStory.length >= 4 ? 4 : 3;
+  if (withStory.length >= 3) out.sonadora = withStory.slice(0, count);
+
+  return out;
+}
+
+function buildCombinadas() {
+  const byDate = {};
+  games.forEach(g => { (byDate[g.date] = byDate[g.date] || []).push(g); });
+  return Object.keys(byDate).sort().map(date => ({ date, ...buildDayCombinadas(byDate[date]) }));
+}
+
+function renderCombinadas() {
+  const container = document.getElementById('combinadasList');
+  const days = buildCombinadas();
+  if (!days.length) {
+    container.innerHTML = `<div class="combo-empty">No hay partidos próximos para armar combinadas.</div>`;
+    return;
+  }
+  container.innerHTML = days.map(d => {
+    const cards = [];
+    d.dupletas.forEach((legs, i) => cards.push(comboCardHtml(`Dupleta ${i + 1}`, legs)));
+    d.tripletas.forEach((legs, i) => cards.push(comboCardHtml(`Tripleta ${i + 1}`, legs)));
+    let sonadoraHtml = '';
+    if (d.sonadora.length) {
+      const p = comboProb(d.sonadora);
+      sonadoraHtml = `
+        <div class="combo-card sonadora">
+          <div class="combo-card-top">
+            <div class="combo-card-title">🌙 Soñadora</div>
+            <div class="combo-prob-badge mid">${pct(p)}% combinada</div>
+          </div>
+          ${d.sonadora.map(l => `
+            <div class="combo-leg">
+              <div class="combo-leg-teams"><b>${l.pick}</b> vs. ${l.opponent}
+                <div class="combo-leg-reason">${l.reasons.join(' · ')}</div>
+              </div>
+              <div class="combo-leg-prob">${pct(l.prob)}%</div>
+            </div>`).join('')}
+        </div>`;
+    }
+    const gridCards = cards.length ? `<div class="combo-grid">${cards.join('')}</div>` : `<div class="combo-empty">No hay suficientes partidos ese día para armar dupletas/tripletas.</div>`;
+    return `
+      <div class="combo-day">
+        <div class="combo-date-h">${fmtDate(d.date)}</div>
+        ${gridCards}
+        ${sonadoraHtml}
+      </div>`;
+  }).join('');
+}
+renderCombinadas();
 
 // ---- Historial ----
 function accuracyStrip() {
