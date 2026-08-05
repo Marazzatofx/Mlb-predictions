@@ -347,7 +347,9 @@ footer.note h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0
   background: var(--win-soft); color: var(--win); font-variant-numeric: tabular-nums;
 }
 .combo-prob-badge.mid { background: var(--amber-soft); color: #7a5518; }
+.combo-prob-badge.bad { background: var(--loss-soft); color: var(--loss); }
 :root[data-theme="dark"] .combo-prob-badge.mid, :root[data-theme="dark"] .combo-leg-reason { color: #f0d9a8; }
+.combo-card-note { font-size: 11px; color: var(--text-dim); margin-top: 8px; }
 .combo-leg { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: 12.5px; }
 .combo-leg + .combo-leg { border-top: 1px solid var(--card-border); }
 .combo-leg-teams { color: var(--text); }
@@ -410,7 +412,7 @@ footer.note h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0
   </div>
 
   <div id="panel-combinadas" class="tab-panel">
-    <div class="combinadas-disclaimer">⚠ Estos porcentajes son la probabilidad combinada estimada por el modelo (multiplicando la probabilidad individual de cada pata, asumiendo partidos independientes) — no una garantía de resultado. Cuantas más patas tiene una combinada, más baja es la probabilidad real de acertarla completa, incluso si cada pata individual es sólida. Es una guía estadística, no una promesa.</div>
+    <div class="combinadas-disclaimer">⚠ Estos porcentajes son la probabilidad combinada estimada por el modelo (multiplicando la probabilidad individual de cada pata, asumiendo partidos independientes) — no una garantía de resultado. Cuantas más patas tiene una combinada, más baja es la probabilidad real de acertarla completa, incluso si cada pata individual es sólida. Es una guía estadística, no una promesa.<br><br><b>Colores del %:</b> el umbral es distinto según cuántas patas tiene la combinada, porque cada pata extra baja el número aunque el pronóstico sea igual de bueno. <span style="color:var(--win)">●</span> Verde = sólida (Dupleta ≥40% · Tripleta ≥25% · Soñadora ≥20%). <span style="color:#b8865a">●</span> Ámbar = aceptable pero con más riesgo (Dupleta 30-40% · Tripleta 15-25% · Soñadora 10-20%). <span style="color:var(--loss)">●</span> Rojo = floja para venderla como "fija" (por debajo de esos pisos) — salvo en la Soñadora, donde ese rango es normal porque es contenido especulativo por diseño, no una fija.</div>
     <div id="combinadasList"></div>
   </div>
 
@@ -693,10 +695,25 @@ function comboLegHtml(l) {
     </div>`;
 }
 
-function comboCardHtml(title, legs, extraClass) {
+// Umbrales por tipo de combinada: menos patas exige más % para considerarse "sólida",
+// porque cada pata extra multiplica y baja el combinado aunque cada partido esté bien pronosticado.
+const PROB_BANDS = {
+  dupleta:  { good: 0.40, mid: 0.30 },
+  tripleta: { good: 0.25, mid: 0.15 },
+  sonadora: { good: 0.20, mid: 0.10 },
+};
+
+function badgeClassFor(kind, p) {
+  const band = PROB_BANDS[kind];
+  if (p >= band.good) return '';
+  if (p >= band.mid) return 'mid';
+  return 'bad';
+}
+
+function comboCardHtml(title, legs, kind, extraClass) {
   if (!legs.length) return '';
   const p = comboProb(legs);
-  const badgeClass = p >= 0.45 ? '' : (p >= 0.28 ? 'mid' : 'mid');
+  const badgeClass = badgeClassFor(kind, p);
   return `
     <div class="combo-card ${extraClass || ''}">
       <div class="combo-card-top">
@@ -774,8 +791,8 @@ function renderCombinadas() {
   }
   container.innerHTML = days.map(d => {
     const cards = [];
-    d.dupletas.forEach((legs, i) => cards.push(comboCardHtml(`Dupleta ${i + 1}`, legs)));
-    d.tripletas.forEach((legs, i) => cards.push(comboCardHtml(`Tripleta ${i + 1}`, legs)));
+    d.dupletas.forEach((legs, i) => cards.push(comboCardHtml(`Dupleta ${i + 1}`, legs, 'dupleta')));
+    d.tripletas.forEach((legs, i) => cards.push(comboCardHtml(`Tripleta ${i + 1}`, legs, 'tripleta')));
     let sonadoraHtml = '';
     if (d.sonadora.length) {
       const p = comboProb(d.sonadora);
@@ -783,7 +800,7 @@ function renderCombinadas() {
         <div class="combo-card sonadora">
           <div class="combo-card-top">
             <div class="combo-card-title">🌙 Soñadora</div>
-            <div class="combo-prob-badge mid">${pct(p)}% combinada</div>
+            <div class="combo-prob-badge ${badgeClassFor('sonadora', p)}">${pct(p)}% combinada</div>
           </div>
           ${d.sonadora.map(l => `
             <div class="combo-leg">
@@ -792,6 +809,7 @@ function renderCombinadas() {
               </div>
               <div class="combo-leg-prob">${pct(l.prob)}%</div>
             </div>`).join('')}
+          <div class="combo-card-note">Contenido especulativo: no se pronostica como "fija", el valor está en la historia detrás de cada pata, no en el % combinado.</div>
         </div>`;
     }
     const gridCards = cards.length ? `<div class="combo-grid">${cards.join('')}</div>` : `<div class="combo-empty">No hay suficientes partidos ese día para armar dupletas/tripletas.</div>`;
