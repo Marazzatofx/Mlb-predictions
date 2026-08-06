@@ -747,6 +747,15 @@ function buildDayCombinadas(dayGames) {
     }
     out.dupletas.push(dupA);
     if (dupB && !sameLegSet(dupA, dupB)) out.dupletas.push(dupB);
+
+    // Dupleta 3: sin repetir ningún equipo de las dos anteriores, la más segura posible con lo que queda.
+    const usedTeams = new Set();
+    out.dupletas.forEach(dup => dup.forEach(l => { usedTeams.add(l.g.away); usedTeams.add(l.g.home); }));
+    const freeGames = scored.filter(s => !usedTeams.has(s.g.away) && !usedTeams.has(s.g.home));
+    if (freeGames.length >= 2) {
+      const dupC = [freeGames[0], freeGames[1]];
+      out.dupletas.push(dupC);
+    }
   }
 
   // Tripletas: dos combinadas de 3 patas, con variedad real (no solo dupleta + 1).
