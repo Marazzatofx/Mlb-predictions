@@ -732,7 +732,7 @@ function sameLegSet(a, b) {
 function buildDayCombinadas(dayGames) {
   const scored = dayGames.map(legScore).sort((a, b) => b.prob - a.prob);
   const n = scored.length;
-  const out = { dupletas: [], tripletas: [], sonadora: [] };
+  const out = { dupletas: [], tripletas: [], sonadora: [], sonadoraFavoritos: [] };
 
   // Dupletas: dos combinadas de 2 patas. Pueden compartir la pata más clara si es muy fuerte.
   if (n >= 2) {
@@ -779,6 +779,13 @@ function buildDayCombinadas(dayGames) {
   const count = withStory.length >= 4 ? 4 : 3;
   if (withStory.length >= 3) out.sonadora = withStory.slice(0, count);
 
+  // Soñadora (favoritos del día): simplemente los 3-4 favoritos más claros de la jornada,
+  // sin filtrar por una historia puntual — junta lo mejor del día en una sola combinada grande.
+  if (n >= 3) {
+    const favCount = n >= 4 ? 4 : 3;
+    out.sonadoraFavoritos = scored.slice(0, favCount);
+  }
+
   return out;
 }
 
@@ -786,6 +793,26 @@ function buildCombinadas() {
   const byDate = {};
   games.forEach(g => { (byDate[g.date] = byDate[g.date] || []).push(g); });
   return Object.keys(byDate).sort().map(date => ({ date, ...buildDayCombinadas(byDate[date]) }));
+}
+
+function sonadoraCardHtml(title, legs, showReasons, note) {
+  if (!legs || !legs.length) return '';
+  const p = comboProb(legs);
+  return `
+    <div class="combo-card sonadora">
+      <div class="combo-card-top">
+        <div class="combo-card-title">${title}</div>
+        <div class="combo-prob-badge ${badgeClassFor('sonadora', p)}">${pct(p)}% combinada</div>
+      </div>
+      ${legs.map(l => `
+        <div class="combo-leg">
+          <div class="combo-leg-teams"><b>${l.pick}</b> vs. ${l.opponent}
+            ${showReasons && l.reasons && l.reasons.length ? `<div class="combo-leg-reason">${l.reasons.join(' · ')}</div>` : ''}
+          </div>
+          <div class="combo-leg-prob">${pct(l.prob)}%</div>
+        </div>`).join('')}
+      <div class="combo-card-note">${note}</div>
+    </div>`;
 }
 
 function renderCombinadas() {
@@ -799,31 +826,17 @@ function renderCombinadas() {
     const cards = [];
     d.dupletas.forEach((legs, i) => cards.push(comboCardHtml(`Dupleta ${i + 1}`, legs, 'dupleta')));
     d.tripletas.forEach((legs, i) => cards.push(comboCardHtml(`Tripleta ${i + 1}`, legs, 'tripleta')));
-    let sonadoraHtml = '';
-    if (d.sonadora.length) {
-      const p = comboProb(d.sonadora);
-      sonadoraHtml = `
-        <div class="combo-card sonadora">
-          <div class="combo-card-top">
-            <div class="combo-card-title">🌙 Soñadora</div>
-            <div class="combo-prob-badge ${badgeClassFor('sonadora', p)}">${pct(p)}% combinada</div>
-          </div>
-          ${d.sonadora.map(l => `
-            <div class="combo-leg">
-              <div class="combo-leg-teams"><b>${l.pick}</b> vs. ${l.opponent}
-                <div class="combo-leg-reason">${l.reasons.join(' · ')}</div>
-              </div>
-              <div class="combo-leg-prob">${pct(l.prob)}%</div>
-            </div>`).join('')}
-          <div class="combo-card-note">Contenido especulativo: no se pronostica como "fija", el valor está en la historia detrás de cada pata, no en el % combinado.</div>
-        </div>`;
-    }
+    const sonadoraHtml = sonadoraCardHtml('🌙 Soñadora', d.sonadora, true,
+      'Contenido especulativo: no se pronostica como "fija", el valor está en la historia detrás de cada pata, no en el % combinado.');
+    const sonadoraFavHtml = sonadoraCardHtml('🌙 Soñadora (favoritos del día)', d.sonadoraFavoritos, false,
+      'Junta a los favoritos más claros de la jornada en una sola combinada grande, sin filtrar por una historia puntual — mientras más patas, más baja el % aunque cada equipo esté bien pronosticado.');
     const gridCards = cards.length ? `<div class="combo-grid">${cards.join('')}</div>` : `<div class="combo-empty">No hay suficientes partidos ese día para armar dupletas/tripletas.</div>`;
     return `
       <div class="combo-day">
         <div class="combo-date-h">${fmtDate(d.date)}</div>
         ${gridCards}
         ${sonadoraHtml}
+        ${sonadoraFavHtml}
       </div>`;
   }).join('');
 }
