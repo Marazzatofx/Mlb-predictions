@@ -412,7 +412,7 @@ footer.note h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0
   </div>
 
   <div id="panel-combinadas" class="tab-panel">
-    <div class="combinadas-disclaimer">⚠ Estos porcentajes son la probabilidad combinada estimada por el modelo (multiplicando la probabilidad individual de cada pata, asumiendo partidos independientes) — no una garantía de resultado. Cuantas más patas tiene una combinada, más baja es la probabilidad real de acertarla completa, incluso si cada pata individual es sólida. Es una guía estadística, no una promesa.<br><br><b>Colores del %:</b> el umbral es distinto según cuántas patas tiene la combinada, porque cada pata extra baja el número aunque el pronóstico sea igual de bueno. <span style="color:var(--win)">●</span> Verde = sólida (Dupleta ≥40% · Tripleta ≥25% · Soñadora ≥20%). <span style="color:#b8865a">●</span> Ámbar = aceptable pero con más riesgo (Dupleta 30-40% · Tripleta 15-25% · Soñadora 10-20%). <span style="color:var(--loss)">●</span> Rojo = floja para venderla como "fija" (por debajo de esos pisos) — salvo en la Soñadora, donde ese rango es normal porque es contenido especulativo por diseño, no una fija.</div>
+    <div class="combinadas-disclaimer">⚠ Estos porcentajes son la probabilidad combinada estimada por el modelo (multiplicando la probabilidad individual de cada pata, asumiendo partidos independientes) — no una garantía de resultado. Cuantas más patas tiene una combinada, más baja es la probabilidad real de acertarla completa, incluso si cada pata individual es sólida. Es una guía estadística, no una promesa.<br><br><b>Colores del %:</b> la misma escala aplica a todas las combinadas, sin importar el tipo — <span style="color:var(--win)">●</span> Verde ≥35% (sólida) · <span style="color:#b8865a">●</span> Ámbar 18-35% (aceptable, más riesgo) · <span style="color:var(--loss)">●</span> Rojo &lt;18% (floja para venderla como "fija"). Por eso las <b>Dupletas</b> son casi siempre las que salen en verde — al tener menos patas, matemáticamente son las combinadas más fijas de todas. Las Tripletas y sobre todo la Soñadora bajan de escala naturalmente por tener más patas multiplicando, no porque el pronóstico de cada partido sea peor — la Soñadora en particular se arma para ser contenido especulativo, no una fija.</div>
     <div id="combinadasList"></div>
   </div>
 
@@ -695,18 +695,15 @@ function comboLegHtml(l) {
     </div>`;
 }
 
-// Umbrales por tipo de combinada: menos patas exige más % para considerarse "sólida",
-// porque cada pata extra multiplica y baja el combinado aunque cada partido esté bien pronosticado.
-const PROB_BANDS = {
-  dupleta:  { good: 0.40, mid: 0.30 },
-  tripleta: { good: 0.25, mid: 0.15 },
-  sonadora: { good: 0.20, mid: 0.10 },
-};
+// Una sola escala de color para todas las combinadas (no relativa por tipo): las Dupletas
+// tienen menos patas y por eso van a caer casi siempre en la banda más alta — son, matemáticamente,
+// las más fijas de todas. Tripletas y Soñadora bajan el % simplemente por tener más patas
+// multiplicando, no porque el pronóstico individual sea peor.
+const PROB_BAND = { good: 0.35, mid: 0.18 };
 
 function badgeClassFor(kind, p) {
-  const band = PROB_BANDS[kind];
-  if (p >= band.good) return '';
-  if (p >= band.mid) return 'mid';
+  if (p >= PROB_BAND.good) return '';
+  if (p >= PROB_BAND.mid) return 'mid';
   return 'bad';
 }
 
