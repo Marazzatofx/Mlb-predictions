@@ -771,6 +771,15 @@ function buildDayCombinadas(dayGames) {
     }
     out.tripletas.push(tripA);
     if (tripB && !sameLegSet(tripA, tripB)) out.tripletas.push(tripB);
+
+    // Tripleta 3: sin repetir ningún equipo de las dos anteriores (no reciclar patas de Dupleta 1/2
+    // camufladas como "otra" tripleta), la más segura posible con lo que queda libre.
+    const usedTripTeams = new Set();
+    out.tripletas.forEach(trip => trip.forEach(l => { usedTripTeams.add(l.g.away); usedTripTeams.add(l.g.home); }));
+    const freeTripGames = scored.filter(s => !usedTripTeams.has(s.g.away) && !usedTripTeams.has(s.g.home));
+    if (freeTripGames.length >= 3) {
+      out.tripletas.push([freeTripGames[0], freeTripGames[1], freeTripGames[2]]);
+    }
   }
 
   // Soñadora: 3-4 patas con historia detrás (mala racha/pitcheo rival, forma reciente, bullpen, ofensiva vs ERA alto).
